@@ -1,10 +1,9 @@
 import gym
-from c_FastDQN import Agent
 import keras
+from FastDQN import Agent
+from keras.layers import Convolution2D, Dense, Flatten, Input
 from keras.models import Model
-from keras.layers import Convolution2D, Dense, Flatten, Input, merge
-from keras.optimizers import RMSprop
-from keras import backend as K
+
 
 def build_model(frame_size, number_of_actions, save_name):
     init = lambda shape, name: keras.initializations.normal(shape, scale=0.01, name=name)
