@@ -111,7 +111,7 @@ class DQNModel:
 
 
 class Agent(object):
-    def __init__(self, game, frame_size, num_actions, save_name, epsilon=0.1, delta_epsilon=0.00001, gamma=0.99,
+    def __init__(self, build_model, game, frame_size, num_actions, save_name, epsilon=0.1, delta_epsilon=0.00001, gamma=0.99,
                  batch_size=64, frame_seq_count=1, memory=5000, save_freq=10, optimizer=RMSprop(0.0001)):
         self.game = game
 
