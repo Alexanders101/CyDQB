@@ -4,7 +4,8 @@
 import numpy as np
 cimport numpy as np
 
-from keras.models import Model
+from keras import optimizers
+from keras.models import Model, model_from_config, model_from_json
 from keras.layers import Convolution2D, Dense, Flatten, Input, merge
 from keras.optimizers import RMSprop
 from keras import backend as K
@@ -55,9 +56,56 @@ cdef void error_calc(np.ndarray[FLOAT_t, ndim=2] VS, np.ndarray[FLOAT_t, ndim=2]
     cdef int i
     cdef int j
     for i in range(batch_size):
-        target = R[i] + (gamma * (1 - T[i]) * max_1d(VNS[i], action_count)) - VS[i, A[i]]
-        for j in range(action_count):
-            VS[i, j] += target
+        # target = R[i] + (gamma * (1 - T[i]) * max_1d(VNS[i], action_count)) - VS[i, A[i]]
+        target = R[i] + (gamma * (1 - T[i]) * max_1d(VNS[i], action_count))
+        VS[i, A[i]] = target
+        # for j in range(action_count):
+        #     VS[i, j] += target
+
+######################
+### Keras Utils
+######################
+
+cdef object copy_model(object model):
+    # Requires Keras 1.0.7 since get_config has breaking changes.
+    copy = model_from_json(model.to_json())
+    copy.set_weights(model.get_weights())
+    return copy
+
+def huber_loss(y_true, y_pred, clip_value=1):
+    x = K.abs(y_true - y_pred)
+
+    condition = x < clip_value
+    squared_loss = .5 * K.square(x)
+    linear_loss = clip_value * (x - .5 * clip_value)
+    return K.switch(condition, squared_loss, linear_loss)
+
+def DQN_loss(y_true, y_pred, loss):
+    # loss =
+    # mask = K.clip(K.abs(y_true - y_pred), 0, 1)
+    # For now assume that loss is 0 based
+    return K.sum(loss(y_true, y_pred), axis=-1)
+
+def get_soft_target_model_updates(target, source, tau):
+    target_weights = target.trainable_weights + target.non_trainable_weights
+    source_weights = source.trainable_weights + source.non_trainable_weights
+    tau_p = 1.0-tau
+    return [(tw, tau*sw + tau_p*tw) for tw, sw in zip(target_weights, source_weights)]
+
+class AdditionalUpdatesOptimizer(optimizers.Optimizer):
+    def __init__(self, optimizer, additional_updates):
+        super(AdditionalUpdatesOptimizer, self).__init__()
+        self.optimizer = optimizer
+        self.additional_updates = additional_updates
+
+    def get_updates(self, params, constraints, loss):
+        updates = self.optimizer.get_updates(params, constraints, loss)
+        updates += self.additional_updates
+        self.updates = updates
+        return self.updates
+
+    def get_config(self):
+        return self.optimizer.get_config()
 
 ######################
 ### Helper Classes
@@ -100,12 +148,10 @@ cdef class DQNModel:
     cdef FLOAT_t gamma
     # Base Keras model (Must be Functional)
     cdef public object model
-    # Optimizer class from keras
-    cdef object optimizer
     # The stop_gradient of the model
-    cdef object grad_model
+    cdef object target_model
 
-    def __cinit__(self, object model, object optimizer, FLOAT_t gamma_=0.99):
+    def __cinit__(self, object model, object optimizer, FLOAT_t gamma_=0.99, FLOAT_t tau=1.0):
         """ DQN loss and training implemented in Keras
         Parameters
         ----------
@@ -118,17 +164,24 @@ cdef class DQNModel:
 
         """
         self.model = model
-        self.optimizer = optimizer
+        self.target_model = copy_model(model)
         self.gamma = gamma_
 
-        self.model.compile(optimizer, 'mse')
-        NS = Input(shape=self.model.input_shape[1:], dtype='float32')
-        self.grad_model = K.function([NS], [K.stop_gradient(self.model(NS))])
+        objective = lambda y_true, y_pred: DQN_loss(y_true, y_pred, huber_loss)
+        if (tau < 1):
+            optimizer = AdditionalUpdatesOptimizer(optimizer,
+                                                   get_soft_target_model_updates(self.target_model, self.model, tau))
+
+        self.target_model.compile('sgd', 'mse')
+        self.model.compile(optimizer, objective)
+        # NS = Input(shape=self.model.input_shape[1:], dtype='float32')
+        # self.grad_model = K.function([NS], [K.stop_gradient(self.model(NS))])
 
     cdef np.ndarray[FLOAT_t, ndim=2] predict(self, np.ndarray[np.uint8_t, ndim=4] X):
         return self.model.predict(X)
 
-    cdef np.float64_t fit(self, np.ndarray[UINT8_t, ndim=4] S, np.ndarray[UINT8_t, ndim=4] NS, np.ndarray[UINT16_t, ndim=1] A,
+    cdef np.float64_t fit(self, np.ndarray[UINT8_t, ndim=4] S, np.ndarray[UINT8_t, ndim=4] NS,
+                          np.ndarray[UINT16_t, ndim=1] A,
                           np.ndarray[FLOAT_t, ndim=1] R, np.ndarray[UINT8_t, ndim=1] T):
         """ Fit on a batch of data
         Parameters
@@ -151,13 +204,16 @@ cdef class DQNModel:
         """
         cdef np.ndarray[FLOAT_t, ndim=2] VS
         cdef np.ndarray[FLOAT_t, ndim=2] VNS
-        cdef np.ndarray[FLOAT_t, ndim=1] target
 
-        VS = self.model.predict(S).astype(np.float32)
-        VNS = self.grad_model((NS.astype(np.float32),))[0].astype(np.float32)
+        VS = self.model.predict(S)
+        # VNS = self.grad_model((NS.astype(np.float32),))[0].astype(np.float32)
+        VNS = self.target_model.predict(NS)
 
         error_calc(VS, VNS, A, R, T, self.gamma)
         return self.model.train_on_batch(S, VS)
+
+    cdef void hard_update_target_weights(self):
+        self.target_model.set_weights(self.model.get_weights())
 
     cdef void save_weights(self, str filepath, np.uint8_t overwrite=True):
         self.model.save_weights(filepath, overwrite)
@@ -186,15 +242,15 @@ cdef class Agent_:
     cdef DOUBLE_t epsilon
     cdef DOUBLE_t delta_epsilon
     cdef FLOAT_t gamma
+    cdef FLOAT_t tau
 
     cdef str save_name
-
 
     def __cinit__(self, object model, object game, tuple frame_size, tuple state_size, UINT64_t num_actions,
                   str save_name, DOUBLE_t epsilon=0.1,
                   DOUBLE_t delta_epsilon=0.00001, FLOAT_t gamma=0.99, UINT64_t batch_size=64,
                   UINT64_t frame_seq_count=1,
-                  UINT64_t memory=5000, UINT64_t save_freq=10, object optimizer=RMSprop(0.0001)):
+                  UINT64_t memory=5000, UINT64_t save_freq=10, FLOAT_t tau=1.0, object optimizer=RMSprop(0.0001)):
         """
         Parameters
         ----------
@@ -223,6 +279,9 @@ cdef class Agent_:
             Size of buffer for states
         save_freq :
             Amount of episodes to wait before saving
+        tau :
+            If >=1, then the rate at which to hard update the target model
+            IF < 1 < 0, then the weight at which to incorporate the main model into target model
         optimizer :
             Keras Optimizer
         """
@@ -240,6 +299,7 @@ cdef class Agent_:
         self.epsilon = epsilon
         self.delta_epsilon = delta_epsilon
         self.gamma = gamma
+        self.tau = tau
 
         self.save_freq = save_freq
         self.memory = memory
@@ -248,7 +308,7 @@ cdef class Agent_:
         self.save_name = save_name
 
         print("Compiling Model...")
-        self.model = DQNModel(model, optimizer, gamma)
+        self.model = DQNModel(model, optimizer, gamma, tau)
         print("Done")
 
         print("Starting Agent with the following parameters:")
@@ -275,7 +335,7 @@ cdef class Agent_:
         ### Initial Game state
         #################
         cdef np.ndarray[UINT8_t, ndim=4] s_0 = np.repeat(self.game.reset().reshape(frame_size), self.frame_seq_count,
-                                                      axis=self.channel_axis + 1)
+                                                         axis=self.channel_axis + 1)
 
         #################
         ### Loop Variables
@@ -332,6 +392,8 @@ cdef class Agent_:
                 if t > self.memory and train:
                     batch = np.random.choice(batch_choices, self.batch_size, replace=False)
                     total_loss += self.model.fit(D_S[batch], D_NS[batch], D_A[batch], D_R[batch], D_T[batch])
+                    if self.tau >= 1.0 and int(t % self.tau) == 0:
+                        self.model.hard_update_target_weights()
 
                 # Update timestep
                 s_t = s_t1
@@ -347,25 +409,32 @@ cdef class Agent_:
     def play(self, UINT64_t num_episodes, UINT8_t train=True):
         return self.play_(num_episodes, train)
 
-cpdef Agent_ Agent(build_model, object game, tuple frame_size, UINT64_t num_actions, str save_name, DOUBLE_t epsilon=0.1,
+cpdef Agent_ Agent(build_model, object game, tuple frame_size, UINT64_t num_actions, str save_name,
+                   DOUBLE_t epsilon=0.1,
                    DOUBLE_t delta_epsilon=0.00001, FLOAT_t gamma=0.99, UINT64_t batch_size=64,
                    UINT64_t frame_seq_count=1,
-                   UINT64_t memory=5000, UINT64_t save_freq=10, object optimizer=RMSprop(0.0001)):
+                   UINT64_t memory=5000, UINT64_t save_freq=10, FLOAT_t tau=1.0, object optimizer=RMSprop(0.0001)):
     channel_axis = 2 if K.image_dim_ordering() == "tf" else 0
     colors = frame_size[channel_axis]
     state_size = list(frame_size)
     state_size[channel_axis] = frame_seq_count * colors
     state_size = tuple(state_size)
 
-    model = build_model(state_size, num_actions, save_name)
+    model = build_model(state_size, num_actions)
+    try:
+        model.load_weights('{}.h5'.format(save_name))
+        print("loading from {}.h5".format(save_name))
+    except:
+        print("Training a new model")
 
     return Agent_(model, game, frame_size, state_size, num_actions, save_name, epsilon, delta_epsilon, gamma,
                   batch_size, frame_seq_count,
-                  memory, save_freq, optimizer)
+                  memory, save_freq, tau, optimizer)
 
 def test_methods():
     size = 5
     VS = np.random.rand(size, 8).astype(np.float32)
+    VOS = VS.copy()
     VNS = np.random.rand(size, 8).astype(np.float32)
     R = np.random.rand(size).astype(np.float32)
     T = np.random.randint(0, 2, size, np.uint8)
@@ -374,11 +443,13 @@ def test_methods():
     gamma = np.float32(0.99)
 
     target = R + (gamma * (1 - T) * np.max(VNS, axis=1))
-    target = target - VS[np.arange(VS.shape[0]), A]
     # VSS = (VS.transpose() + target).transpose()
     print(target)
-    print(VS)
+    print(A)
     error_calc(VS, VNS, A, R, T, gamma)
+    print(VOS)
     print(VS)
+    for true, pred in zip(VS, VOS):
+        print(DQN_loss(true, pred, huber_loss).eval().tolist())
     # print(target)
     # assert (target == VS).all()

@@ -37,4 +37,4 @@ class flappy_game:
 if __name__ == '__main__':
     GAME = flappy_game()
     agent = Agent(GAME, (80,80,1), 2, 'flappy', frame_seq_count=4, optimizer=Adam(1e-6), memory=10000, delta_epsilon=0.1 / 2E6)
-    agent.play(20000,True)
+    agent.play(20000, 1)
