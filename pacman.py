@@ -3,6 +3,7 @@ import keras
 from FastDQN import Agent
 from keras.layers import Convolution2D, Dense, Flatten, Input
 from keras.models import Model
+from keras import optimizers
 from skimage import transform, color, exposure, util
 import warnings
 warnings.filterwarnings("ignore")
@@ -55,7 +56,11 @@ if __name__ == '__main__':
                   frame_seq_count=4,
                   save_freq=5,
                   memory=5000,
-                  epsilon=0.1,
-                  delta_epsilon=0.005)
+                  epsilon=0.0,
+                  delta_epsilon=0.005,
+                  gamma=0.99,
+                  batch_size=64,
+                  tau=1.0,
+                  optimizer=optimizers.Adam(lr=1E-6))
 
-    agent.play(10000, True)
+    agent.play(10000, False)

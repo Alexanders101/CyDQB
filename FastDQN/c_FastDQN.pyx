@@ -1,6 +1,11 @@
 #!python
 #cython: language_level=3, boundscheck=False, wraparound=False, overflowcheck=False
 
+# TODO
+# DDQN
+# PRIORITIZED REPLAY
+# Dynamic Frame Skip https://arxiv.org/pdf/1605.05365v2.pdf
+#
 import numpy as np
 cimport numpy as np
 
