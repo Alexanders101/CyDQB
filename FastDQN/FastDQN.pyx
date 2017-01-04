@@ -114,7 +114,6 @@ cdef class Agent:
         cdef np.ndarray[FLOAT_t, ndim=1] errors = np.empty(self.batch_size, np.float32)
         cdef UINT64_t buffer_idx
 
-        cdef np.ndarray[UINT64_t, ndim=1] batch_choices = np.arange(self.memory, dtype=np.uint64)
         cdef tuple frame_size = (1,) + self.frame_size
 
         #################
@@ -204,7 +203,7 @@ cdef class Agent:
                     weights = D_E / sum_1d(D_E)
 
                     # Get the current batch indices
-                    batch = np.random.choice(batch_choices, self.batch_size, replace=False, p=weights)
+                    batch = np.random.choice(explore_time, self.batch_size, replace=False, p=weights)
 
                     # Calculate weight for each sample
                     weights *= explore_time
