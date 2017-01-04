@@ -5,6 +5,7 @@ from keras.layers import Convolution2D, Dense, Flatten, Input
 from keras.models import Model
 from keras import optimizers
 from skimage import transform, color, exposure, util
+from matplotlib import pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -46,8 +47,6 @@ class MsPacMan:
 
 if __name__ == '__main__':
     game = MsPacMan(True)
-    # from matplotlib.pyplot import imsave
-    # imsave('testframe.png', game.reset().reshape(168,160))
     agent = MakeAgent(build_model=build_model,
                       game=game,
                       frame_size=(168,160,1),
@@ -64,4 +63,7 @@ if __name__ == '__main__':
                       optimizer=optimizers.Adam(lr=1E-6),
                       double_dqn=True)
 
-    agent.play(10000, True)
+    scores, losses = agent.play(10, False)
+    plt.plot(scores)
+    plt.plot(losses)
+    plt.show()

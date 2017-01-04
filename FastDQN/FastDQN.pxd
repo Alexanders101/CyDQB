@@ -28,5 +28,8 @@ cdef class Agent:
 
     cdef str save_name
 
+    cdef public list scores
+    cdef public list losses
+
     cdef void play_(self, UINT64_t num_episodes, BOOL_t train=?)
     cpdef play(self, UINT64_t num_episodes, BOOL_t train=?)

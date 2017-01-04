@@ -6,6 +6,9 @@ from FastDQN.DQNModel import huber_loss
 from time import time
 import numpy as np
 
+DEF DEBUG = False
+DEF LOGGING = True
+
 ######################
 ### Agent
 ######################
@@ -74,6 +77,9 @@ cdef class Agent:
 
         self.save_name = save_name
 
+        self.scores = []
+        self.losses = []
+
         print("Compiling Model...")
         self.model = DQNModel(model, optimizer, loss, gamma, tau, double_dqn)
         print("Done")
@@ -103,13 +109,12 @@ cdef class Agent:
         cdef np.ndarray[FLOAT_t, ndim=1] D_R = np.empty( self.memory, np.float32 )
         cdef np.ndarray[UINT8_t, ndim=1] D_T = np.empty( self.memory, np.uint8 )
 
-        cdef np.ndarray[FLOAT_t, ndim=1] D_E = np.zeros( self.memory, np.float32 ) + 0.0001
-        cdef np.ndarray[FLOAT_t, ndim=1] P = np.empty( self.memory, np.float32 )
-        cdef np.ndarray[FLOAT_t, ndim=1] W = np.empty( self.batch_size, np.float32 )
+        cdef np.ndarray[FLOAT_t, ndim=1] D_E = np.zeros( self.memory, np.float32 ) + 1E-5
+        cdef np.ndarray[FLOAT_t, ndim=1] weights = np.empty( self.memory, np.float32 )
         cdef np.ndarray[FLOAT_t, ndim=1] errors = np.empty(self.batch_size, np.float32)
         cdef UINT64_t buffer_idx
 
-        cdef np.ndarray batch_choices = np.arange(self.memory, dtype=np.uint64)
+        cdef np.ndarray[UINT64_t, ndim=1] batch_choices = np.arange(self.memory, dtype=np.uint64)
         cdef tuple frame_size = (1,) + self.frame_size
 
         #################
@@ -139,8 +144,11 @@ cdef class Agent:
         cdef DOUBLE_t total_score
 
         cdef DOUBLE_t epsilon = self.epsilon
-        cdef DOUBLE_t delta_epsilon = self.delta_epsilon
         cdef DOUBLE_t start_time
+
+        IF LOGGING:
+            log_file = open("{}.log".format(self.save_name), 'w')
+            log_file.write("episode,score,loss\n")
 
 
         for episode in range(num_episodes):
@@ -157,7 +165,7 @@ cdef class Agent:
 
             # Update random factor
             if epsilon > 0 and t > explore_time:
-                epsilon -= delta_epsilon
+                epsilon -= self.delta_epsilon
 
             while not terminal:
                 # Get the Models chosen Action or random action
@@ -177,8 +185,8 @@ cdef class Agent:
 
                 # Update Buffers
                 total_score += r_t
-
                 buffer_idx = t % explore_time
+
                 D_S[buffer_idx] = s_t[0]
                 D_NS[buffer_idx] = s_t1[0]
                 D_A[buffer_idx] = a_t
@@ -186,28 +194,26 @@ cdef class Agent:
                 D_T[buffer_idx] = terminal
                 D_E[buffer_idx] = max_1d(D_E)
 
-                # print(D_S)
-                # print(D_NS)
-                print(np.asarray(values))
-                print(D_A)
-                print(D_R)
-                print(D_T)
-                print(D_E)
+                # # print(D_S)
+                # # print(D_NS)
+                #
 
                 # Train Model
                 if t > explore_time and train:
                     # Get probability of each state
-                    P = D_E / sum_1d(D_E)
+                    weights = D_E / sum_1d(D_E)
 
                     # Get the current batch indices
-                    batch = np.random.choice(batch_choices, self.batch_size, replace=False, p=P)
+                    batch = np.random.choice(batch_choices, self.batch_size, replace=False, p=weights)
 
                     # Calculate weight for each sample
-                    W = (P[batch]*explore_time)**(self.beta)
-                    W /= max_1d(W)
+                    weights *= explore_time
+                    weights **= self.beta
+                    weights /= max_1d(weights)
 
                     # Fit model
-                    total_loss += self.model.fit(D_S[batch], D_NS[batch], D_A[batch], D_R[batch], D_T[batch], errors, W)
+                    total_loss += self.model.fit(D_S[batch], D_NS[batch], D_A[batch], D_R[batch], D_T[batch],
+                                                 errors, weights[batch])
 
                     # Calculate new Errors for probabilities
                     D_E[batch] = errors**self.alpha + 1E-6
@@ -216,18 +222,53 @@ cdef class Agent:
                     if self.tau >= 1.0 and int(t % self.tau) == 0:
                         self.model.hard_update_target_weights()
 
+                    # Debugging Stuff
+                    IF DEBUG:
+                        print()
+                        print()
+                        print("t = {}".format(t))
+                        print("------------------------------------")
+                        print("index = {}".format(buffer_idx))
+                        print("Batch")
+                        print(np.asarray(batch))
+                        print("Weights")
+                        print(weights)
+                        print("Values")
+                        print(np.asarray(values))
+                        print("Actions")
+                        print(D_A)
+                        print("Rewards")
+                        print(D_R)
+                        print("Terminal")
+                        print(D_T)
+                        print("Errors")
+                        print(D_E)
+
                 # Update timestep
                 s_t = s_t1
                 t += 1
 
             print("Total Loss: {:.4f} | Total Score: {:.4f} | Epsilon: {:.5f} | Frames: {} | Time Taken: {:.2f}s".format(
                   total_loss, total_score, self.epsilon, t, time() - start_time))
+
+            IF LOGGING:
+                log_file.write("{},{},{}\n".format(episode, total_score, total_loss))
+
+            self.scores.append(total_score)
+            self.losses.append(total_loss)
+
             if episode % self.save_freq == 0:
                 print("Saving Model to {}.j5".format(self.save_name))
                 self.model.save_weights("{}.h5".format(self.save_name))
 
+
     cpdef play(self, UINT64_t num_episodes, BOOL_t train=True):
-        return self.play_(num_episodes, train)
+        try:
+            self.play_(num_episodes, train)
+        except KeyboardInterrupt:
+            print("Program Halted Early")
+
+        return self.scores, self.losses
 
 
 cpdef Agent MakeAgent(object game, tuple frame_size, UINT64_t num_actions, str save_name,

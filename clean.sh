@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-rm MsPacMan.h5
+rm *.h5
+rm *.log
 rm -r __pycache__/
 cd FastDQN
 rm *.so
