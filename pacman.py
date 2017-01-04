@@ -1,7 +1,7 @@
 import gym
 import keras
 from FastDQN import MakeAgent
-from keras.layers import Convolution2D, Dense, Flatten, Input
+from keras.layers import Convolution2D, Dense, Flatten, Input, Permute, Reshape, TimeDistributed, LSTM, Dropout
 from keras.models import Model
 from keras import optimizers
 from skimage import transform, color, exposure, util
@@ -10,6 +10,27 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+def build_model_rnn(state_size, number_of_actions):
+    # state_size = (x, y, num)
+    conv_params = {'activation': 'relu', 'init': 'glorot_normal', 'border_mode': 'same'}
+    x, y, stack = state_size
+
+    S = Input(shape=state_size)
+
+    # Key part to make it work with LSTM
+    h = Permute((3,1,2))(S)
+    h = Reshape( (stack, x, y, 1) )(h)
+
+    h = TimeDistributed(Convolution2D(32, 8, 8, subsample=(2, 2), **conv_params), name="r_conv1")(h)
+    h = TimeDistributed(Convolution2D(64, 4, 4, subsample=(2, 2), **conv_params), name="r_conv2")(h)
+    h = TimeDistributed(Convolution2D(64, 3, 3, subsample=(1, 1), **conv_params), name="r_conv3")(h)
+    h = TimeDistributed(Flatten(), name="flatten")(h)
+    h = LSTM(512, activation='relu', init='glorot_normal', name="LSTM_1")(h)
+    h = Dropout(.2, name="LSTM_1_drop")(h)
+
+    V = Dense(number_of_actions, init='glorot_normal', name="Output")(h)
+    model = Model(S, V)
+    return model
 
 def build_model(state_size, number_of_actions):
 
