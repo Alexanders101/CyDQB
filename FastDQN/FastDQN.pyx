@@ -249,10 +249,11 @@ cdef class Agent:
                 t += 1
 
             print("Total Loss: {:.4f} | Total Score: {:.4f} | Epsilon: {:.5f} | Frames: {} | Time Taken: {:.2f}s".format(
-                  total_loss, total_score, self.epsilon, t, time() - start_time))
+                  total_loss, total_score, epsilon, t, time() - start_time))
 
             IF LOGGING:
                 log_file.write("{},{},{}\n".format(episode, total_score, total_loss))
+                log_file.flush()
 
             self.scores.append(total_score)
             self.losses.append(total_loss)
