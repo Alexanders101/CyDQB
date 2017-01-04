@@ -1,6 +1,6 @@
 import gym
 import keras
-from FastDQN import Agent
+from FastDQN import MakeAgent
 from keras.layers import Convolution2D, Dense, Flatten, Input
 from keras.models import Model
 from keras import optimizers
@@ -48,19 +48,20 @@ if __name__ == '__main__':
     game = MsPacMan(True)
     # from matplotlib.pyplot import imsave
     # imsave('testframe.png', game.reset().reshape(168,160))
-    agent = Agent(build_model=build_model,
-                  game=game,
-                  frame_size=(168,160,1),
-                  num_actions=game.num_actions,
-                  save_name="MsPacMan",
-                  frame_seq_count=4,
-                  save_freq=5,
-                  memory=5000,
-                  epsilon=0.0,
-                  delta_epsilon=0.005,
-                  gamma=0.99,
-                  batch_size=64,
-                  tau=1.0,
-                  optimizer=optimizers.Adam(lr=1E-6))
+    agent = MakeAgent(build_model=build_model,
+                      game=game,
+                      frame_size=(168,160,1),
+                      num_actions=game.num_actions,
+                      save_name="MsPacMan",
+                      frame_seq_count=4,
+                      save_freq=5,
+                      memory=20,
+                      epsilon=0.1,
+                      delta_epsilon=0.005,
+                      gamma=0.99,
+                      batch_size=16,
+                      tau=1.0,
+                      optimizer=optimizers.Adam(lr=1E-6),
+                      double_dqn=True)
 
-    agent.play(10000, False)
+    agent.play(10000, True)
