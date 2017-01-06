@@ -174,12 +174,12 @@ cdef class Agent:
                     if np.random.rand() <= epsilon:
                         a_t = np.random.randint(self.num_actions, dtype=np.uint16)
                     else:
+                        #TODO Implement Boltzmann Choice
                         a_t = argmax_2d(values)
 
 
                 # Get the next frame of the game based on chosen action and create the next state
                 x_t1, r_t, terminal = self.game.step(a_t, values)
-
                 s_t1 = np.concatenate((s_t[:, :, :, self.colors:], np.reshape(x_t1, frame_size)),
                                       axis=self.channel_axis + 1)
 
@@ -193,10 +193,6 @@ cdef class Agent:
                 D_R[buffer_idx] = r_t
                 D_T[buffer_idx] = terminal
                 D_E[buffer_idx] = max_1d(D_E)
-
-                # # print(D_S)
-                # # print(D_NS)
-                #
 
                 # Train Model
                 if t > explore_time and train:

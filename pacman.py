@@ -1,11 +1,9 @@
 import gym
-import keras
 from FastDQN import MakeAgent
 from keras.layers import Convolution2D, Dense, Flatten, Input, Permute, Reshape, TimeDistributed, LSTM, Dropout
 from keras.models import Model
 from keras import optimizers
 from skimage import transform, color, exposure, util
-from matplotlib import pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -21,11 +19,10 @@ def build_model_rnn(state_size, number_of_actions):
     h = Permute((3,1,2))(S)
     h = Reshape( (stack, x, y, 1) )(h)
 
-    h = TimeDistributed(Convolution2D(32, 8, 8, subsample=(2, 2), **conv_params), name="r_conv1")(h)
-    h = TimeDistributed(Convolution2D(64, 4, 4, subsample=(2, 2), **conv_params), name="r_conv2")(h)
-    h = TimeDistributed(Convolution2D(64, 3, 3, subsample=(1, 1), **conv_params), name="r_conv3")(h)
+    h = TimeDistributed(Convolution2D(32, 6, 6, subsample=(2, 2), **conv_params), name="r_conv1")(h)
+    h = TimeDistributed(Convolution2D(64, 3, 3, subsample=(2, 2), **conv_params), name="r_conv2")(h)
     h = TimeDistributed(Flatten(), name="flatten")(h)
-    h = LSTM(512, activation='relu', init='glorot_normal', name="LSTM_1")(h)
+    h = LSTM(256, init='glorot_normal', name="LSTM_1")(h)
     h = Dropout(.2, name="LSTM_1_drop")(h)
 
     V = Dense(number_of_actions, init='glorot_normal', name="Output")(h)
@@ -75,16 +72,13 @@ if __name__ == '__main__':
                       save_name="MsPacMan",
                       frame_seq_count=4,
                       save_freq=5,
-                      memory=20,
-                      epsilon=0.1,
-                      delta_epsilon=0.005,
+                      memory=1000,
+                      epsilon=0.0,
+                      delta_epsilon=0.001,
                       gamma=0.99,
                       batch_size=16,
                       tau=1.0,
                       optimizer=optimizers.Adam(lr=1E-6),
                       double_dqn=True)
 
-    scores, losses = agent.play(10, False)
-    plt.plot(scores)
-    plt.plot(losses)
-    plt.show()
+    agent.play(10000, False)
