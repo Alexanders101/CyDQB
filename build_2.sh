@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-cd FastDQN
+cd CyDQN
 python compile.py build_ext --inplace
 rm -r build/

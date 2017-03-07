@@ -1,5 +1,5 @@
 import gym
-from FastDQN import MakeAgent
+from CyDQN import MakeAgent
 from keras.layers import Convolution2D, Dense, Flatten, Input, Permute, Reshape, TimeDistributed, LSTM, Dropout
 from keras.models import Model
 from keras import optimizers
