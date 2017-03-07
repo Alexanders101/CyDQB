@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 rm *.log
 rm -r __pycache__/
-cd FastDQN
+cd CyDQN
 rm *.so
 rm *.cpp
 rm *.c

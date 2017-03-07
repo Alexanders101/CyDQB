@@ -1,6 +1,6 @@
 import numpy as np
 cimport numpy as np
-from FastDQN.utils cimport *
+from CyDQN.utils cimport *
 
 class tests:
 

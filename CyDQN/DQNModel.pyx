@@ -4,6 +4,7 @@ import numpy as np
 from keras import optimizers
 from keras.models import Model, model_from_json
 from keras import backend as K
+import tensorflow as tf
 
 cdef object copy_model(object model):
     copy = model_from_json(model.to_json())
@@ -16,7 +17,8 @@ def huber_loss(y_true, y_pred, clip_value=1):
     condition = x < clip_value
     squared_loss = .5 * K.square(x)
     linear_loss = clip_value * (x - .5 * clip_value)
-    return K.switch(condition, squared_loss, linear_loss)
+#    return K.switch(condition, squared_loss, linear_loss)
+    return tf.where(condition, squared_loss, linear_loss)
 
 def DQN_loss(y_true, y_pred, loss):
     return K.sum(loss(y_true, y_pred), axis=-1)
