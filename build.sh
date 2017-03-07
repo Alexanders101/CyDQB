@@ -1,4 +1,4 @@
-#!/usr/bin/zsh
+# Compile With Python 3.
 cd CyDQN
-/home/alex/Programs/anaconda3/bin/python3 compile.py build_ext --inplace
+python3 compile.py build_ext --inplace
 rm -r build/

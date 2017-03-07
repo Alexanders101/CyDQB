@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 rm *.log
 rm -r __pycache__/
 cd CyDQN
